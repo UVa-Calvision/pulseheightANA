@@ -27,7 +27,7 @@ Analysis code for data taken with DRS module
 ```
 * time: sample time, roughly in units of 0.2ns
 * chs[0...7]: the data for module 1 (1st 8 channels), each of these is a vector<float>[with 1000 samples]
-* chs[0...8]: digitized trigger data, a vector<float>[with 1000 samples]
+* chs[8]: digitized trigger data, a vector<float>[with 1000 samples]
 * event: event number
 * min: this is the location of minimal y-value of the trigger pulse.  We use this to align the data
 
