@@ -56,6 +56,6 @@ From the signal histogram we determin a baseline and the peak position. Then the
 
   
 ## fitting the peaks
-In the python directory: <br>
+In the fitter directory: <br>
 python fitPeaks.py ../build/A1-C2-L1440-DG-5k_out.root
   
