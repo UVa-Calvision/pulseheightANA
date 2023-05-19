@@ -50,9 +50,9 @@ Note: Pulse test generates the following plots:
 * A profile histogram of all the trigger pulses after alignment
 * A profile histogram of all the signal buffers after alignment
 
-From the signal histogram we determin a baseline and the peak position. Then the pulse high distribution is shown in two histograms:
-* The pulse height distribution samples at the signak peaking location
-* The distribution of pulse integrals approximately from the start of the pulse to before the polarity change (remember we are AC coupled)
+From the signal histogram we determine a baseline and the peak position. Then the pulse high distribution is shown in two histograms (after baseline subtraction):
+* The pulse height distribution of samples at the signal peaking location
+* The distribution of pulse integrals approximately from the start of the pulse to before the polarity change (remember we are AC coupled).  The integration range is shown in the 4th plot above.
 
   
 ## fitting the peaks
