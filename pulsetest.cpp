@@ -57,7 +57,7 @@ void pulse_heightDRS(TString file){
   auto tf=new TFile(file);
   auto tree=(TTree*)tf->Get("waves");
 
-  # figure out the signal pulatity and which channel to plot from the filename
+  // figure out the signal pulatity and which channel to plot from the filename
   double polarity=1.0;
   if (file.Contains("TIA")) polarity=-1.0;
   int ampid=2;
