@@ -13,6 +13,7 @@
 #include "TObjArray.h"
 
 #include "TProfile.h"
+#include "TGraph.h"
 #include "TF1.h"
 #include "TH2.h"
 #include "TLine.h"
@@ -57,9 +58,7 @@ void pulse_heightDRS(TString file){
   auto tf=new TFile(file);
   auto tree=(TTree*)tf->Get("waves");
 
-  // figure out the signal pulatity and which channel to plot from the filename
-  double polarity=1.0;
-  if (file.Contains("TIA")) polarity=-1.0;
+  // figure out which channel to plot from the filename
   int ampid=2;
   if (file.Contains("C6")) ampid=6;
   if (file.Contains("C4")) ampid=4;
@@ -80,15 +79,24 @@ void pulse_heightDRS(TString file){
   tcsum->cd(1);
   tree->Draw("chs[8]:time");
 
+  // plot an overlay of 1st 200 events
   tcsum->cd(2);
   TString ampst = TString::Format("chs[%d]:time",ampid);
-  if (polarity<0) tree->Draw("-1.0*"+ampst);
-  else tree->Draw(ampst);
+  long n = tree->Draw(ampst,"","goff",200);
+  TGraph *graph = new TGraph(n, tree->GetV2(), tree->GetV1());
+  graph->Draw("AP");
+  double gxmin,gxmax,gymin,gymax;
+  graph->ComputeRange(gxmin, gymin, gxmax, gymax);
+  // figure out the signal polarity
+  double polarity=1.0;
+  if ( fabs(gymax-graph->GetMean(2)) < fabs(graph->GetMean(2)-gymin) ) polarity=-1.0;
+  
 
+  
   // demonstrate alignment scheme and determine the mean pulse shape
   int TrigSet=820;  // fix nominal trigger position
   int LEN=1000;     // depends on data file, make this dynamic in the future
-  auto htrig = new TH2F("htrig","Trigger aligned;sample no.;ADC",LEN,0,LEN,1300,1000,2300);
+  auto htrig = new TH2F("htrig","Trigger aligned;sample no.;ADC",LEN,0,LEN,1300,500,2300);
   auto hprofv= new TProfile("hprofv","Average waveform;sample no.;ADC",LEN,0,LEN);
 
   
@@ -113,7 +121,9 @@ void pulse_heightDRS(TString file){
 
 
   // find peak and baseline
-  int ipeak =  hprofv->GetMinimumBin();
+  //int ipeak =  hprofv->GetMinimumBin();
+  int ipeak =  hprofv->GetMaximumBin();
+
   cout << "peak at " << ipeak << endl;
 
   // start end window for pulse integral
