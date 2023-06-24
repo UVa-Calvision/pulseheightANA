@@ -1,18 +1,27 @@
 #include "TMath.h"
 
-void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root"){
+void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
+		  bool savePlot=false){
   auto tf=new TFile(file);
   auto tree=(TTree*)tf->Get("waves");
+  // output file
+  TString fnout=file;
+  fnout.ReplaceAll(".root",".pdf");
 
-  const int LEN=2002;
-  Double_t time[LEN],volts[LEN],startx;
+  gStyle->SetOptStat(0);
+
+  // find the size of the sample buffer
+  auto br=tree->GetBranch("time");
+  auto tl=br->GetLeaf("time");
+  int LEN = tl->GetNdata();
+  
+  Double_t *time = new Double_t[LEN];
+  Double_t *volts= new Double_t[LEN];
+  Double_t startx;
   Long_t event;
   tree->SetBranchAddress("time",time);
   tree->SetBranchAddress("volts",volts);
   tree->SetBranchAddress("startx",&startx);
-
-  // output file
-  
 
   
   auto tcsum = new TCanvas("tcsum","summary");
@@ -43,10 +52,16 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root"){
   // start end window for pulse integral
   int istart = ipeak-90;  // tuned by hand
   int istop = ipeak+100;
-  auto l1= new TLine();
-  l1->DrawLine(istart,min,istart,max);
+  auto l1= new TLine(istart,min,istart,max);
+  l1->SetLineStyle(2);
+  l1->Draw();
   auto l2= new TLine (istop,min,istop,max);
+  l2->SetLineStyle(2);
   l2->Draw();
+  auto l3= new TLine (ipeak,min,ipeak,max);
+  l3->SetLineStyle(2);
+  l3->SetLineColor(kRed);
+  l3->Draw();
     
   //auto phd = new TH1F("phd","PulseHeights;mV;frequency",160,-0.5,ymax*1000*2);
   auto phd = new TH1F("phd","PulseHeights;mV;frequency",160,-0.5,50);
@@ -83,6 +98,11 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root"){
   tcsum->cd(4);
   pid->Draw();
 
+  if (savePlot) tcsum->SaveAs(fnout);
+  
+  delete[] time;
+  delete[] volts;
+  
   return;
   
   // DCR analysis
