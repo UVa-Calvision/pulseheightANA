@@ -14,6 +14,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   auto br=tree->GetBranch("time");
   auto tl=br->GetLeaf("time");
   int LEN = tl->GetNdata();
+  cout << "Processing buffers of length: " << LEN << endl;
   
   Double_t *time = new Double_t[LEN];
   Double_t *volts= new Double_t[LEN];
