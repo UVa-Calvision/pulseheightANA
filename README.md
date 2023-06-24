@@ -59,3 +59,7 @@ From the signal histogram we determine a baseline and the peak position. Then th
 In the fitter directory: <br>
 python fitPeaks.py ../build/A1-C2-L1440-DG-5k_out.root
   
+## LCG setup
+See LCG docs: https://lcgdocs.web.cern.ch/lcgdocs/lcgreleases/introduction/
+
+```e.g. Use the latest stable GCC 11 on a CentOS 7 machine in a Bash shell: source /cvmfs/sft.cern.ch/lcg/contrib/gcc/11/x86_64-centos7/setup.sh```
