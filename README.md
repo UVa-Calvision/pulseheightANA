@@ -33,7 +33,7 @@ Analysis code for data taken with DRS module
 
 
 
-## build the pulsetest executable
+## build the DRSPulseAna executable
 This code will open a data fine from the DRS and plot the pulse height spectrum.
 
 mkdir build <br>
@@ -41,7 +41,7 @@ cd build <br>
 cmake .. <br>
 make <br>
 run the code with an input file: <br>
-./pulsetest A1-C2-L1440-DG-5k.root <br>
+./DRSPulseAna A1-C2-L1440-DG-5k.root <br>
 This creates an output file: A1-C2-L1440-DG-5k_out.root
 
 Note: Pulse test generates the following plots:

@@ -17,13 +17,13 @@
 #include "TF1.h"
 #include "TH2.h"
 #include "TLine.h"
-
-
+#include "TStyle.h"
+#include <unistd.h> 
 
 using std::cout;
 using std::endl;
 
-void pulse_heightDRS(TString file);
+void pulse_heightDRS(TString file, int DRSchan);
 
 int main(int argc, char **argv) {
 
@@ -32,13 +32,24 @@ int main(int argc, char **argv) {
     return(1);
   }
   TString file(argv[1]);
+  
+  int DRSchan=2;  // default DRS channel
+
+  char c;
+  while ((c = getopt (argc, argv, "c:")) != -1) 
+    switch (c) {
+    case 'c':
+      DRSchan=atoi(optarg);
+      break;
+    }
 
   // This allows you to view ROOT-based graphics in your C++ program
   // If you don't want view graphics (eg just read/process/write data files), 
   // this can be ignored
   TApplication theApp("App", &argc, argv);
+  gStyle->SetOptStat(0);
 
-  pulse_heightDRS(file);
+  pulse_heightDRS(file, DRSchan);
   
   
   // view graphics in ROOT if we are in an interactive session
@@ -51,19 +62,14 @@ int main(int argc, char **argv) {
 
 }
 
-
-void pulse_heightDRS(TString file){
+// note: trigger is assumed to be on channel 8
+void pulse_heightDRS(TString file, int DRSchan=2){
   cout << "Processing: " << file << endl;
-
+  cout << "DRS channel: " << DRSchan << endl;
+  
   auto tf=new TFile(file);
   auto tree=(TTree*)tf->Get("waves");
 
-  // figure out which channel to plot from the filename
-  int ampid=2;
-  if (file.Contains("C6")) ampid=6;
-  if (file.Contains("C4")) ampid=4;
-  if (file.Contains("C0")) ampid=0;
-  
   std::vector<std::vector<float> > *chs=0;
   std::vector<float> *ttime=0;
 
@@ -81,22 +87,24 @@ void pulse_heightDRS(TString file){
 
   // plot an overlay of 1st 200 events
   tcsum->cd(2);
-  TString ampst = TString::Format("chs[%d]:time",ampid);
-  long n = tree->Draw(ampst,"","goff",200);
+  TString ampst = TString::Format("chs[%d]:time",DRSchan);
+  long n = tree->Draw(ampst,"","goff",200); /// overlay 200 wave forms (unaligned)
   TGraph *graph = new TGraph(n, tree->GetV2(), tree->GetV1());
+  graph->SetTitle("Overlay of pulse buffers;time [ns];ADC");
   graph->Draw("AP");
   double gxmin,gxmax,gymin,gymax;
   graph->ComputeRange(gxmin, gymin, gxmax, gymax);
   // figure out the signal polarity
   double polarity=1.0;
   if ( fabs(gymax-graph->GetMean(2)) < fabs(graph->GetMean(2)-gymin) ) polarity=-1.0;
-  
+  cout << "Signal polarity = " << (int)polarity << endl;
 
   
   // demonstrate alignment scheme and determine the mean pulse shape
   int TrigSet=820;  // fix nominal trigger position
   int LEN=1000;     // depends on data file, make this dynamic in the future
   auto htrig = new TH2F("htrig","Trigger aligned;sample no.;ADC",LEN,0,LEN,1300,500,2300);
+  // pulses are modified to be positive going if necessary for this TProfile
   auto hprofv= new TProfile("hprofv","Average waveform;sample no.;ADC",LEN,0,LEN);
 
   
@@ -109,7 +117,7 @@ void pulse_heightDRS(TString file){
     for (int n=0; n<LEN; ++n) {
       if ((n+dt)>=0 && (n+dt)<LEN){
 	htrig->Fill(n,(*chs)[8][n+dt]);
-	hprofv->Fill(n,polarity*((*chs)[ampid][n+dt]));
+	hprofv->Fill(n,polarity*((*chs)[DRSchan][n+dt]));
       }
     }
   }
@@ -124,7 +132,7 @@ void pulse_heightDRS(TString file){
   //int ipeak =  hprofv->GetMinimumBin();
   int ipeak =  hprofv->GetMaximumBin();
 
-  cout << "peak at " << ipeak << endl;
+  cout << "Signal peak is at sample: " << ipeak << endl;
 
   // start end window for pulse integral
   int istart = ipeak-25;  // tuned by hand
@@ -135,19 +143,23 @@ void pulse_heightDRS(TString file){
   double baseline = hprofv->GetFunction("pol0")->GetParameter(0);
   double ymin = hprofv->GetMinimum();
   double ymax = hprofv->GetMaximum();
-  int meanpulse =  abs(baseline-hprofv->GetMinimum());
+  int meanpulse =  ymax-baseline;
+  cout << "mean pulse height: " << meanpulse << endl;
 
   
   auto l1= new TLine();
   l1->DrawLine(istart,ymin,istart,ymax);
   auto l2= new TLine (istop,ymin,istop,ymax);
   l2->Draw();
+  auto l3= new TLine (ipeak,ymin,ipeak,ymax);
+  l3->Draw();
 
 
   auto tcsum2 = new TCanvas("tcsum2","summary2");
   tcsum2->Divide(1,2);
-  
-  auto phd = new TH1F("phd","PulseHeights;ADC;frequency",3*meanpulse+50,-50,3*meanpulse);
+
+  // hacky guesstimate of histogram ranges
+  auto phd = new TH1F("phd","PulseHeights;ADC;frequency",3*meanpulse+50,-meanpulse/3,3*meanpulse);
   auto pid = new TH1F("pid","PulseIntegral;A.U.;frequency",meanpulse*(istop-istart)/40,
 		      -meanpulse*(istop-istart)/10,meanpulse*(istop-istart));
 
@@ -156,12 +168,12 @@ void pulse_heightDRS(TString file){
     tree->GetEntry(ievt);
     int imin = int(min);
     int dt=imin-TrigSet;
-    double height=-polarity*((*chs)[ampid][ipeak+dt]-polarity*baseline);
+    double height=(polarity*(*chs)[DRSchan][ipeak+dt]-baseline);
     phd->Fill(height);
     double sum=0;
 
     for (int n=istart; n<istop; ++n) {
-      double V=-polarity*((*chs)[ampid][n+dt]-polarity*baseline);
+      double V=(polarity*(*chs)[DRSchan][n+dt]-baseline);
       sum+=(V); 
     }
     pid->Fill(sum);
