@@ -62,7 +62,8 @@ python fitPeaks.py ../build/A1-C2-L1440-DG-5k_out.root
 ## LCG setup
 See LCG docs: https://lcgdocs.web.cern.ch/lcgdocs/lcgreleases/introduction/
 
-```e.g. source /cvmfs/sft.cern.ch/lcg/views/LCG_99/x86_64-centos7-gcc10-opt/setup.sh 
+```
+e.g. source /cvmfs/sft.cern.ch/lcg/views/LCG_99/x86_64-centos7-gcc10-opt/setup.sh 
 ```
 
 Note: this took some trial and error to find a compatible release.
