@@ -23,7 +23,7 @@
 using std::cout;
 using std::endl;
 
-void pulse_heightDRS(TString file, int DRSchan);
+void pulse_heightDRS(TString file, int DRSchan, int TrigSet);
 
 int main(int argc, char **argv) {
 
@@ -34,12 +34,15 @@ int main(int argc, char **argv) {
   TString file(argv[1]);
   
   int DRSchan=2;  // default DRS channel
-
+  int TrigSet=820; 
   char c;
-  while ((c = getopt (argc, argv, "c:")) != -1) 
+  while ((c = getopt (argc, argv, "c:t:")) != -1) 
     switch (c) {
     case 'c':
       DRSchan=atoi(optarg);
+      break;
+    case 't':
+      TrigSet = atoi(optarg);
       break;
     }
 
@@ -49,7 +52,7 @@ int main(int argc, char **argv) {
   TApplication theApp("App", &argc, argv);
   gStyle->SetOptStat(0);
 
-  pulse_heightDRS(file, DRSchan);
+  pulse_heightDRS(file, DRSchan, TrigSet);
   
   
   // view graphics in ROOT if we are in an interactive session
@@ -63,10 +66,12 @@ int main(int argc, char **argv) {
 }
 
 // note: trigger is assumed to be on channel 8
-void pulse_heightDRS(TString file, int DRSchan=2){
+void pulse_heightDRS(TString file, int DRSchan=2, int TrigSet=820){
   cout << "Processing: " << file << endl;
   cout << "DRS channel: " << DRSchan << endl;
-  
+  cout << "Trigger Position Set To: " << TrigSet << endl;
+
+
   auto tf=new TFile(file);
   auto tree=(TTree*)tf->Get("waves");
 
@@ -101,7 +106,7 @@ void pulse_heightDRS(TString file, int DRSchan=2){
 
   
   // demonstrate alignment scheme and determine the mean pulse shape
-  int TrigSet=820;  // fix nominal trigger position
+  //int TrigSet=trigpos; //270 for later runs, fix nominal trigger position
   int LEN=1000;     // depends on data file, make this dynamic in the future
   auto htrig = new TH2F("htrig","Trigger aligned;sample no.;ADC",LEN,0,LEN,1300,500,2300);
   // pulses are modified to be positive going if necessary for this TProfile
