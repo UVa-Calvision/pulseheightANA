@@ -1,7 +1,11 @@
+// 400 samples left of peak
+
 #include "TMath.h"
 
 void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
 		  bool savePlot=false){
+
+  const double dTbaseline = 25e-9;  // time to sample before peak (new amplifier)
   auto tf=new TFile(file);
   auto tree=(TTree*)tf->Get("waves");
   // output file
@@ -29,13 +33,17 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   tcsum->Divide(2,2);
   tcsum->cd(1);
   tree->Draw("volts*1000:(time-startx)*1e9","event==0");
+  double sampleTime=0;
 
   // determine the pulse shape
   auto hprof= new TProfile("hprof","Average waveform;sample no.;mV",LEN,0,LEN);
   for (int i=0; i<tree->GetEntries(); ++i){
     tree->GetEntry(i);
     for (int n=0; n<LEN; ++n) hprof->Fill(n,volts[n]*1000);
+    if (i==0) sampleTime = time[1]-time[0];
   }
+  cout << "sampling time = " << sampleTime << endl;
+
   // find baseline and peak
   tcsum->cd(2);
   hprof->Fit("pol0","","",0,1000);
@@ -73,8 +81,10 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   //double Vwid=(Vmax-V0)/Vbins;
   //auto hscan = new TH1I("hscan","Threshold Scan;mV;frequency",Vbins,V0,Vmax);
    
+  int iBLS = (int)(dTbaseline/sampleTime);
   for (int ievt=0; ievt<tree->GetEntries(); ++ievt){
     tree->GetEntry(ievt);
+    baseline = volts[ipeak-iBLS]*1000;
     double height=polarity*(volts[ipeak]*1000-baseline);
     phd->Fill(height);
     double sum=0;
