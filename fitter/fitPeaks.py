@@ -1,7 +1,7 @@
 import ROOT as r
 from peakFitter import *
 import sys, os
-
+from builtins import input  # for python2 compatibility
 
 if len(sys.argv)<2:
     print("No input file given")
