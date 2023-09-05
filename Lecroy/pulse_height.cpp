@@ -6,6 +6,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
 		  bool savePlot=false){
 
   const double dTbaseline = 25e-9;  // time to sample before peak (new amplifier)
+  const double integrateT = 50e-9;  // integrate from tPeak-dTbaseline to tPeak+integrateT
   auto tf=new TFile(file);
   auto tree=(TTree*)tf->Get("waves");
   // output file
@@ -64,8 +65,14 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   // start end window for pulse integral
   //int istart = ipeak-90;  // tuned by hand
   //int istop = ipeak+100;
-  int istart = ipeak-400;  // tuned by hand
-  int istop = ipeak+400;
+
+  // # bins before the peak  to do the baseline subtraction
+  int iBLS = (int)(dTbaseline/sampleTime);
+  // # bins after the peak to integrate
+  int iInt = (int)(integrateT/sampleTime);
+
+  int istart = ipeak-iBLS;  // tuned by hand
+  int istop = ipeak+iInt;
   auto l1= new TLine(istart,min,istart,max);
   l1->SetLineStyle(2);
   l1->Draw();
@@ -102,7 +109,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   //double Vwid=(Vmax-V0)/Vbins;
   //auto hscan = new TH1I("hscan","Threshold Scan;mV;frequency",Vbins,V0,Vmax);
    
-  int iBLS = (int)(dTbaseline/sampleTime);
+  
   for (int ievt=0; ievt<tree->GetEntries(); ++ievt){
     tree->GetEntry(ievt);
     baseline = volts[ipeak-iBLS]*1000;
