@@ -11,6 +11,8 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   // output file
   TString fnout=file;
   fnout.ReplaceAll(".root",".pdf");
+  int pos=fnout.Last('/');
+  if ( pos>-1 ) fnout.Remove(0,pos+1);
 
   gStyle->SetOptStat(0);
 
@@ -19,6 +21,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   auto tl=br->GetLeaf("time");
   int LEN = tl->GetNdata();
   cout << "Processing buffers of length: " << LEN << endl;
+  cout << "Number of buffers: " << tree->GetEntries() << endl;
   
   Double_t *time = new Double_t[LEN];
   Double_t *volts= new Double_t[LEN];
@@ -32,7 +35,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   auto tcsum = new TCanvas("tcsum","summary");
   tcsum->Divide(2,2);
   tcsum->cd(1);
-  tree->Draw("volts*1000:(time-startx)*1e9","event==0");
+  tree->Draw("volts*1000:(time-startx)*1e9","event==0","",1);
   double sampleTime=0;
 
   // determine the pulse shape
@@ -59,8 +62,10 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   double ymax=fabs(volts[ipeak]);
   
   // start end window for pulse integral
-  int istart = ipeak-90;  // tuned by hand
-  int istop = ipeak+100;
+  //int istart = ipeak-90;  // tuned by hand
+  //int istop = ipeak+100;
+  int istart = ipeak-400;  // tuned by hand
+  int istop = ipeak+400;
   auto l1= new TLine(istart,min,istart,max);
   l1->SetLineStyle(2);
   l1->Draw();
@@ -72,9 +77,25 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   l3->SetLineColor(kRed);
   l3->Draw();
     
+  // find scale factor for the integral to normalize it to the pHd
+  double iScale = hprof->GetMaximum() / hprof->Integral(istart,istop);
+
+
+
+  TString plotfile=file;
+  int loc=plotfile.Last('/');
+  if ( loc>-1 ) plotfile.Remove(0,loc+1);
+  TString outfile=plotfile;
+  outfile.ReplaceAll(".root","_out.root");
+  auto tfout = new TFile(outfile,"RECREATE");
+
   //auto phd = new TH1F("phd","PulseHeights;mV;frequency",160,-0.5,ymax*1000*2);
   auto phd = new TH1F("phd","PulseHeights;mV;frequency",160,-0.5,50);
-  auto pid = new TH1F("pid","PulseIntegral;A.U.;frequency",150,-200,4000);
+  //auto pid = new TH1F("pid","PulseIntegral;A.U.;frequency",150,-200,4000);
+  //auto pid = new TH1F("pid","PulseIntegral;A.U.;frequency",150,-200,30000);
+  auto pid = (TH1F*)(phd->Clone("pid"));
+  pid->SetTitle("PulseIntegral/%Delta t;A.U.;frequency");
+
   //double V0=0;
   //double Vmax=4;
   //int Vbins=500;
@@ -101,18 +122,21 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
       double V=polarity*(volts[n]*1000-baseline);
       sum+=(V); 
     }
-    pid->Fill(sum);
+    pid->Fill(sum * iScale);   // new
   }
 
   tcsum->cd(3);
-  phd->Draw();
+  phd->DrawCopy();
   tcsum->cd(4);
-  pid->Draw();
+  pid->DrawCopy();
 
   if (savePlot) tcsum->SaveAs(fnout);
   
   delete[] time;
   delete[] volts;
+
+  tfout->Write();
+  tfout->Close();
   
   return;
   
