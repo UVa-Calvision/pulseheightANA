@@ -2,7 +2,7 @@
 
 #include "TMath.h"
 
-void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
+void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch=3,
 		  bool savePlot=false){
 
   const double dTbaseline = 25e-9;  // time to sample before peak (new amplifier)
@@ -25,25 +25,35 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   cout << "Number of buffers: " << tree->GetEntries() << endl;
   
   Double_t *time = new Double_t[LEN];
-  Double_t *volts= new Double_t[LEN];
+  Double_t *pool = new Double_t[LEN*4]; 
+  Double_t **volts = new Double_t *[4];
+  for (int i = 0; i < 4; i++) {
+    volts[i] = &(pool[LEN*i]);
+  }
+
+
   Double_t startx;
   Long_t event;
   tree->SetBranchAddress("time",time);
-  tree->SetBranchAddress("volts",volts);
+  tree->SetBranchAddress("volts",pool);
   tree->SetBranchAddress("startx",&startx);
 
   
   auto tcsum = new TCanvas("tcsum","summary");
   tcsum->Divide(2,2);
   tcsum->cd(1);
-  tree->Draw("volts*1000:(time-startx)*1e9","event==0","",1);
+  TString m;
+  m.Form("volts[%d]*1000:(time-startx)*1e9", ch);
+  std::cout << m << std::endl; 
+  tree->Draw(m,"event==0","",1);
+  //tree->Draw("volts[3]*1000:(time-startx)*1e9","event==0","",1);
   double sampleTime=0;
 
   // determine the pulse shape
   auto hprof= new TProfile("hprof","Average waveform;sample no.;mV",LEN,0,LEN);
   for (int i=0; i<tree->GetEntries(); ++i){
     tree->GetEntry(i);
-    for (int n=0; n<LEN; ++n) hprof->Fill(n,volts[n]*1000);
+    for (int n=0; n<LEN; ++n) hprof->Fill(n,volts[ch][n]*1000);
     if (i==0) sampleTime = time[1]-time[0];
   }
   cout << "sampling time = " << sampleTime << endl;
@@ -60,7 +70,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
    ipeak = hprof->GetMaximumBin();
     polarity=1.0;
   }
-  double ymax=fabs(volts[ipeak]);
+  double ymax=fabs(volts[ch][ipeak]);
   
   // start end window for pulse integral
   //int istart = ipeak-90;  // tuned by hand
@@ -97,7 +107,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   auto tfout = new TFile(outfile,"RECREATE");
 
   //auto phd = new TH1F("phd","PulseHeights;mV;frequency",160,-0.5,ymax*1000*2);
-  auto phd = new TH1F("phd","PulseHeights;mV;frequency",160,-0.5,50);
+  auto phd = new TH1F("phd","PulseHeights;mV;frequency",128,-10.0,50);
   //auto pid = new TH1F("pid","PulseIntegral;A.U.;frequency",150,-200,4000);
   //auto pid = new TH1F("pid","PulseIntegral;A.U.;frequency",150,-200,30000);
   auto pid = (TH1F*)(phd->Clone("pid"));
@@ -112,13 +122,13 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   
   for (int ievt=0; ievt<tree->GetEntries(); ++ievt){
     tree->GetEntry(ievt);
-    baseline = volts[ipeak-iBLS]*1000;
-    double height=polarity*(volts[ipeak]*1000-baseline);
+    baseline = volts[ch][ipeak-iBLS]*1000;
+    double height=polarity*(volts[ch][ipeak]*1000-baseline);
     phd->Fill(height);
     double sum=0;
     // full pulse integral histogram and threshold scan
     //    for (int n=0; n<LEN; ++n){
-    //      double V=-(volts[n]*1000-baseline);
+    //      double V=-(volts[ch][n]*1000-baseline);
     //      if (n>=istart && n<istop) sum+=(V);      
     //      if (V<V0 || V>=Vmax) continue;
     //      int ibin = (int)((V-V0)/Vwid) + 1;
@@ -126,7 +136,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
     //    }
 
     for (int n=istart; n<istop; ++n) {
-      double V=polarity*(volts[n]*1000-baseline);
+      double V=polarity*(volts[ch][n]*1000-baseline);
       sum+=(V); 
     }
     pid->Fill(sum * iScale);   // new
@@ -140,7 +150,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   if (savePlot) tcsum->SaveAs(fnout);
   
   delete[] time;
-  delete[] volts;
+  delete[] pool; 
 
   tfout->Write();
   tfout->Close();
@@ -158,7 +168,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",
   while (ievt<NBUF){
     tree->GetEntry(ievt);
     for (int n=0; n<LEN; ++n){
-       double V=-(volts[n]*1000-baseline);
+       double V=-(volts[ch][n]*1000-baseline);
        buffer->SetBinContent(n+offset,V);
     }
     offset+=LEN;
