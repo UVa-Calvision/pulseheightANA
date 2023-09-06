@@ -5,8 +5,8 @@
 void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch=3,
 		  bool savePlot=false){
 
-  const double dTbaseline = 25e-9;  // time to sample before peak (new amplifier)
-  const double integrateT = 50e-9;  // integrate from tPeak-dTbaseline to tPeak+integrateT
+  const double dTbaseline = 30e-9;  // time to sample before peak (new amplifier)
+  const double integrateT = 10e-9;  // integrate from tPeak-dTbaseline to tPeak+integrateT
   auto tf=new TFile(file);
   auto tree=(TTree*)tf->Get("waves");
   // output file
@@ -107,7 +107,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
   auto tfout = new TFile(outfile,"RECREATE");
 
   //auto phd = new TH1F("phd","PulseHeights;mV;frequency",160,-0.5,ymax*1000*2);
-  auto phd = new TH1F("phd","PulseHeights;mV;frequency",128,-10.0,50);
+  auto phd = new TH1F("phd","PulseHeights;mV;frequency",256,-10.0,80);
   //auto pid = new TH1F("pid","PulseIntegral;A.U.;frequency",150,-200,4000);
   //auto pid = new TH1F("pid","PulseIntegral;A.U.;frequency",150,-200,30000);
   auto pid = (TH1F*)(phd->Clone("pid"));
