@@ -5,7 +5,7 @@
 void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch=3,
 		  bool savePlot=false){
 
-  const double dTbaseline = 30e-9;  // time to sample before peak (new amplifier)
+  const double dTbaseline = 40e-9;  // time to sample before peak (new amplifier)
   const double integrateT = 10e-9;  // integrate from tPeak-dTbaseline to tPeak+integrateT
   auto tf=new TFile(file);
   auto tree=(TTree*)tf->Get("waves");
@@ -18,32 +18,55 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
   gStyle->SetOptStat(0);
 
   // find the size of the sample buffer
-  auto br=tree->GetBranch("time");
-  auto tl=br->GetLeaf("time");
-  int LEN = tl->GetNdata();
+  Int_t samples; 
+  Float_t horiz_interval;
+  Float_t vgains[4];
+
+  TString m; 
+
+
+  tree->SetBranchAddress("vertical_gain", vgains); 
+  tree->SetBranchAddress("samples", &samples);
+  tree->SetBranchAddress("horizontal_interval", &horiz_interval);
+
+  tree->GetEntry(0);
+
+  Float_t vgain =vgains[ch];
+    
+  cout << "Sample count: " << samples << endl; 
+  cout << "Horizontal interval: " << horiz_interval << endl; 
+  cout << "Ch:" << ch << " vertical gain:" << vgain << endl; 
+  int LEN = samples; 
   cout << "Processing buffers of length: " << LEN << endl;
   cout << "Number of buffers: " << tree->GetEntries() << endl;
-  
+
+  int16_t *pool = new int16_t[LEN*4]; 
   Double_t *time = new Double_t[LEN];
-  Double_t *pool = new Double_t[LEN*4]; 
-  Double_t **volts = new Double_t *[4];
+
+  /*  for (int i = 0; i < LEN; i++) {
+    time[i] = i*horiz_interval;
+    }*/
+  
+  int16_t **volts = new int16_t *[4];
   for (int i = 0; i < 4; i++) {
     volts[i] = &(pool[LEN*i]);
   }
 
+  
 
   Double_t startx;
   Long_t event;
+  
   tree->SetBranchAddress("time",time);
-  tree->SetBranchAddress("volts",pool);
-  tree->SetBranchAddress("startx",&startx);
+  tree->SetBranchAddress("channels",pool);
+  //tree->SetBranchAddress("horizontal_offset",&startx);
 
   
   auto tcsum = new TCanvas("tcsum","summary");
   tcsum->Divide(2,2);
   tcsum->cd(1);
-  TString m;
-  m.Form("volts[%d]*1000:(time-startx)*1e9", ch);
+
+  m.Form("channels[%d]*1000*vertical_gain[%d]:time*1e9", ch, ch);
   std::cout << m << std::endl; 
   tree->Draw(m,"event==0","",1);
   //tree->Draw("volts[3]*1000:(time-startx)*1e9","event==0","",1);
@@ -53,7 +76,8 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
   auto hprof= new TProfile("hprof","Average waveform;sample no.;mV",LEN,0,LEN);
   for (int i=0; i<tree->GetEntries(); ++i){
     tree->GetEntry(i);
-    for (int n=0; n<LEN; ++n) hprof->Fill(n,volts[ch][n]*1000);
+
+    for (int n=0; n<LEN; ++n) hprof->Fill(n,volts[ch][n]*1000*vgain);
     if (i==0) sampleTime = time[1]-time[0];
   }
   cout << "sampling time = " << sampleTime << endl;
@@ -70,7 +94,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
    ipeak = hprof->GetMaximumBin();
     polarity=1.0;
   }
-  double ymax=fabs(volts[ch][ipeak]);
+  double ymax=fabs(volts[ch][ipeak]*vgain);
   
   // start end window for pulse integral
   //int istart = ipeak-90;  // tuned by hand
@@ -107,7 +131,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
   auto tfout = new TFile(outfile,"RECREATE");
 
   //auto phd = new TH1F("phd","PulseHeights;mV;frequency",160,-0.5,ymax*1000*2);
-  auto phd = new TH1F("phd","PulseHeights;mV;frequency",256,-10.0,80);
+  auto phd = new TH1F("phd","PulseHeights;mV;frequency",157,-10.0,110);
   //auto pid = new TH1F("pid","PulseIntegral;A.U.;frequency",150,-200,4000);
   //auto pid = new TH1F("pid","PulseIntegral;A.U.;frequency",150,-200,30000);
   auto pid = (TH1F*)(phd->Clone("pid"));
@@ -122,8 +146,8 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
   
   for (int ievt=0; ievt<tree->GetEntries(); ++ievt){
     tree->GetEntry(ievt);
-    baseline = volts[ch][ipeak-iBLS]*1000;
-    double height=polarity*(volts[ch][ipeak]*1000-baseline);
+    baseline = volts[ch][ipeak-iBLS]*1000*vgain;
+    double height=polarity*(volts[ch][ipeak]*1000*vgain-baseline);
     phd->Fill(height);
     double sum=0;
     // full pulse integral histogram and threshold scan
@@ -136,7 +160,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
     //    }
 
     for (int n=istart; n<istop; ++n) {
-      double V=polarity*(volts[ch][n]*1000-baseline);
+      double V=polarity*(volts[ch][n]*1000*vgain-baseline);
       sum+=(V); 
     }
     pid->Fill(sum * iScale);   // new
@@ -168,7 +192,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
   while (ievt<NBUF){
     tree->GetEntry(ievt);
     for (int n=0; n<LEN; ++n){
-       double V=-(volts[ch][n]*1000-baseline);
+       double V=-(volts[ch][n]*1000*vgain-baseline);
        buffer->SetBinContent(n+offset,V);
     }
     offset+=LEN;
