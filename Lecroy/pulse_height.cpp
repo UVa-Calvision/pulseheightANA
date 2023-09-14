@@ -117,7 +117,8 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
   l3->SetLineStyle(2);
   l3->SetLineColor(kRed);
   l3->Draw();
-    
+  std::cout << "Peak min: " << min << " Peak max:" << max << " Delta: " << max-min << std::endl; 
+  
   // find scale factor for the integral to normalize it to the pHd
   double iScale = hprof->GetMaximum() / hprof->Integral(istart,istop);
 
@@ -131,7 +132,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
   auto tfout = new TFile(outfile,"RECREATE");
 
   //auto phd = new TH1F("phd","PulseHeights;mV;frequency",160,-0.5,ymax*1000*2);
-  auto phd = new TH1F("phd","PulseHeights;mV;frequency",157,-10.0,110);
+  auto phd = new TH1F("phd","PulseHeights;mV;frequency",157,-10.0,75);
   //auto pid = new TH1F("pid","PulseIntegral;A.U.;frequency",150,-200,4000);
   //auto pid = new TH1F("pid","PulseIntegral;A.U.;frequency",150,-200,30000);
   auto pid = (TH1F*)(phd->Clone("pid"));
