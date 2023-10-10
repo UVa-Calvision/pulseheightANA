@@ -1,12 +1,91 @@
-// 400 samples left of peak
+// 
 
 #include "TMath.h"
+
+int binCalc(double &xmin, double &xmax, double vgain){
+  return (int) ((xmax-xmin) / fabs(vgain)); // roughly # of ADC counts for range
+}
+
+double pulse(double *t, double *par){
+  double x=t[0];
+  double x0=par[0];
+  double A=par[1];
+  double a=par[2];
+  double tau=par[3];
+  double ped=par[4];
+  double pulse = ped;
+  if (x>x0) pulse += A*pow((x-x0),a)*exp(-(x-x0)/tau);
+  return pulse;
+}
+
+
+
+// to do: improve init parameter evaluation
+class pulseFitter {
+public:
+  TF1 *fn;
+  pulseFitter(TH1* h, bool test=false){
+    double xmin = h->GetBinCenter(1);
+    double xmax = h->GetBinCenter(h->GetNbinsX());
+    /*
+    // histogram to function!
+    TF1 *hfn = new TF1("hfn",[=](double *x, double *){return h->Interpolate(x[0]);},
+		       xmin,xmax,0);
+    TGraph *g = new TGraph(hfn,"d");  // derivative of histogram "function"
+    auto y = g->GetY();
+    auto x = g->GetX();
+    int n  = g->GetN();
+    int i  = std::max_element(y,y+n)-y;
+    double x0=x[i];  // max value of derivative
+    */
+
+    fn = new TF1("pulse",pulse,xmin,xmax,5);
+    fn->SetLineColor(kRed-4);
+
+    int imax = h->GetMaximumBin();
+    double xM = h->GetBinCenter(imax);
+    double ymax = h->GetBinContent(imax);
+    int x0 = xM;
+    for (int i=imax; i>0 ; --i){
+      if (h->GetBinContent(i)<ymax*0.1){
+	x0 = h->GetBinCenter(i);
+	break;
+      }
+    }
+    fn->SetParameter(0, x0);
+
+    double baseline=h->GetBinContent(1);
+    fn->FixParameter(4, baseline);
+
+    fn->SetParameter(1,(ymax-baseline)/(xM-x0)); 
+    double a = 1;
+    fn->SetParameter(2, a);
+    double tau = (xM-x0)/a/log(xM-x0);
+    fn->SetParameter(3, tau);
+    
+    fn->SetRange(xmin,xM+100);
+    if (test) {
+      cout << "A " <<  ymax-baseline << endl;
+      cout << "x0 " << x0 << endl; 
+      cout << "xM " << xM << endl;
+      cout << "a " << a << endl;
+      cout << "tau " << tau << endl;
+      cout << "ped " << baseline << endl;
+      return;
+    }
+    h->Fit("pulse","N");
+    //fn->SetRange(0,95); // (x0+xM)/2);
+    h->Fit("pulse","0");  // final fit only includes the main pulse area after the peak
+  }
+};
+
 
 void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch=3,
 		  bool savePlot=false){
 
-  const double dTbaseline = 40e-9;  // time to sample before peak (new amplifier)
-  const double integrateT = 10e-9;  // integrate from tPeak-dTbaseline to tPeak+integrateT
+  const double dTbaseline = 3;  // time before x0 to start integral in ns
+  const double nTau =0;         // end of integration region in units of tail decay parameter
+
   auto tf=new TFile(file);
   auto tree=(TTree*)tf->Get("waves");
   // output file
@@ -20,18 +99,19 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
   // find the size of the sample buffer
   Int_t samples; 
   Float_t horiz_interval;
+  Float_t vertical_offset;
   Float_t vgains[4];
 
   TString m; 
 
-
   tree->SetBranchAddress("vertical_gain", vgains); 
   tree->SetBranchAddress("samples", &samples);
   tree->SetBranchAddress("horizontal_interval", &horiz_interval);
+  tree->SetBranchAddress("vertical_offset", &vertical_offset);
 
   tree->GetEntry(0);
 
-  Float_t vgain =vgains[ch];
+  Float_t vgain = vgains[ch];
     
   cout << "Sample count: " << samples << endl; 
   cout << "Horizontal interval: " << horiz_interval << endl; 
@@ -40,88 +120,128 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
   cout << "Processing buffers of length: " << LEN << endl;
   cout << "Number of buffers: " << tree->GetEntries() << endl;
 
-  int16_t *pool = new int16_t[LEN*4]; 
-  Double_t *time = new Double_t[LEN];
+  auto tcsum = new TCanvas("tcsum","summary");
+  tcsum->Divide(2,2);
+  tcsum->cd(1);
 
-  /*  for (int i = 0; i < LEN; i++) {
-    time[i] = i*horiz_interval;
-    }*/
-  
+  // Draw a sample buffer
+  m.Form("channels[%d]*1000*vertical_gain[%d]:time*1e9 >> htrace", ch, ch);
+  //tree->Draw(m,"event==1","GOFF",1);
+  //std::cout << m << std::endl;
+  int nplot=3;
+  int n;
+  auto mg = new TMultiGraph();
+  mg->SetTitle("Sample buffer;ns;mV");
+  for (int i=0; i<nplot; ++i){
+    n = tree->Draw(m,"","GOFF",1,i);
+    TGraph *g = new TGraph(n,tree->GetV2(),tree->GetV1()); 
+    g->SetLineColor(kGray+i);
+    mg->Add(g);
+  }
+  mg->Draw("ac"); 
+
+  // find polarity
+  //tree->Draw(m,"event<10","",10);
+  tree->Draw(m,"event<10","GOFF",10);
+  TH2F *htrace = (TH2F*)gDirectory->Get("htrace");
+  auto projY =  htrace->ProjectionY();
+  double min = projY->GetBinCenter(1);
+  double max = projY->GetBinCenter(projY->GetNbinsX());
+  cout << "min,max " << min << " " << max << endl;
+  //htrace->ProjectionY()->Draw();
+
+  double polarity=1.0;
+  if (fabs(min)>fabs(max)){  // careful this might not be smart enough
+    polarity = -1.0;  
+  }
+  cout << "signal polarity is: " << polarity << endl;
+
+  // convert calibration to mV and ns
+  vgain*=1000*polarity;
+  double dt = horiz_interval * 1e9;
+
+
+  int16_t *pool = new int16_t[LEN*4]; 
+  Double_t *time = new Double_t[LEN]; 
   int16_t **volts = new int16_t *[4];
+
   for (int i = 0; i < 4; i++) {
     volts[i] = &(pool[LEN*i]);
   }
-
-  
 
   Double_t startx;
   Long_t event;
   
   tree->SetBranchAddress("time",time);
   tree->SetBranchAddress("channels",pool);
-  //tree->SetBranchAddress("horizontal_offset",&startx);
 
-  
-  auto tcsum = new TCanvas("tcsum","summary");
-  tcsum->Divide(2,2);
-  tcsum->cd(1);
-
-  m.Form("channels[%d]*1000*vertical_gain[%d]:time*1e9", ch, ch);
-  std::cout << m << std::endl; 
-  tree->Draw(m,"event==0","",1);
-  //tree->Draw("volts[3]*1000:(time-startx)*1e9","event==0","",1);
-  double sampleTime=0;
-
-  // determine the pulse shape
-  auto hprof= new TProfile("hprof","Average waveform;sample no.;mV",LEN,0,LEN);
+  // determine the average pulse shape
+  auto hprof= new TProfile("hprof","Average waveform;time [ns];mV",LEN,-dt/2,
+			   LEN*dt-dt/2);
+  double vmin=10000, vmax=-10000;
   for (int i=0; i<tree->GetEntries(); ++i){
     tree->GetEntry(i);
-
-    for (int n=0; n<LEN; ++n) hprof->Fill(n,volts[ch][n]*1000*vgain);
-    if (i==0) sampleTime = time[1]-time[0];
+    for (int n=0; n<LEN; ++n) {
+      double v = volts[ch][n]*vgain;
+      if (v<vmin) vmin=v;
+      if (v>vmax) vmax=v;
+      hprof->Fill(n*dt,v);   
+    }
   }
-  cout << "sampling time = " << sampleTime << endl;
 
-  // find baseline and peak
+  min = hprof->GetMinimum();
+  max = hprof->GetMaximum();
+  cout << "min/max samples: " << vmin << "/" << vmax << " mV" << endl;
+
   tcsum->cd(2);
-  hprof->Fit("pol0","","",0,1000);
-  double baseline = hprof->GetFunction("pol0")->GetParameter(0);
-  double min = hprof->GetMinimum();
-  double max = hprof->GetMaximum();
-  double polarity=-1.0;
-  int ipeak = hprof->GetMinimumBin();
-  if (fabs(max)>fabs(min)) {
-   ipeak = hprof->GetMaximumBin();
-    polarity=1.0;
-  }
-  double ymax=fabs(volts[ch][ipeak]*vgain);
+
+  // get a rough fit to the pulse shape
+  pulseFitter fP(hprof->ProjectionX(),true);
+  hprof->Draw();
+  fP.fn->Draw("same");
+  tcsum->Update();
+ 
+
+  // set up integration window and baseline
+  double start = fP.fn->GetParameter(0)-dTbaseline;
   
-  // start end window for pulse integral
-  //int istart = ipeak-90;  // tuned by hand
-  //int istop = ipeak+100;
+  double baseline = fP.fn->GetParameter(4);
+  int iBLS = hprof->FindBin(start);  // use 1 sample before rise as baseline
+  cout << "sample baseline at: " << hprof->GetBinCenter(iBLS) << endl;
 
-  // # bins before the peak  to do the baseline subtraction
-  int iBLS = (int)(dTbaseline/sampleTime);
-  // # bins after the peak to integrate
-  int iInt = (int)(integrateT/sampleTime);
+  // note: there is a bias in the peak loaction, probably due to averaging over pileup
+  // the average pulse shape is less peaked and the maximum value is later than for single pulses
+  int ipeak = hprof->GetMaximumBin();
+  double peak=hprof->GetBinCenter(ipeak);
 
-  int istart = ipeak-iBLS;  // tuned by hand
-  int istop = ipeak+iInt;
-  auto l1= new TLine(istart,min,istart,max);
+  int istart = iBLS;
+  double stop = peak + nTau * fP.fn->GetParameter(3);
+  int istop = hprof->FindBin(stop);
+  // try a shorter integration range around peak of profile hist
+  istart = ipeak-40;
+  //istart = hprof->FindBin(92);
+  istop = ipeak+20;
+
+  cout << "Sample peak at: " << peak << endl;
+  cout << "Integrating over range: " << start << " : " << stop << endl;
+  cout << "Integrating over bins: " << istart << " : " << istop << endl;
+
+  double ymin=0;
+  double ymax=hprof->GetMaximum()*1.1;
+  auto l1= new TLine(start,ymin,start,ymax);
   l1->SetLineStyle(2);
   l1->Draw();
-  auto l2= new TLine (istop,min,istop,max);
+  auto l2= new TLine (stop,ymin,stop,ymax);
   l2->SetLineStyle(2);
   l2->Draw();
-  auto l3= new TLine (ipeak,min,ipeak,max);
+  auto l3= new TLine (peak,ymin,peak,ymax);
   l3->SetLineStyle(2);
   l3->SetLineColor(kRed);
   l3->Draw();
-  std::cout << "Peak min: " << min << " Peak max:" << max << " Delta: " << max-min << std::endl; 
+  
   
   // find scale factor for the integral to normalize it to the pHd
   double iScale = hprof->GetMaximum() / hprof->Integral(istart,istop);
-
 
 
   TString plotfile=file;
@@ -132,36 +252,22 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
   auto tfout = new TFile(outfile,"RECREATE");
 
   //auto phd = new TH1F("phd","PulseHeights;mV;frequency",160,-0.5,ymax*1000*2);
-  auto phd = new TH1F("phd","PulseHeights;mV;frequency",157,-10.0,75);
-  //auto pid = new TH1F("pid","PulseIntegral;A.U.;frequency",150,-200,4000);
-  //auto pid = new TH1F("pid","PulseIntegral;A.U.;frequency",150,-200,30000);
+  double xmin=-20.0;
+  double xmax=ymax*3;  // hack seems to work
+  int nx = binCalc(xmin,xmax,vgain);
+  auto phd = new TH1F("phd","PulseHeights;mV;frequency",nx,xmin,xmax);
   auto pid = (TH1F*)(phd->Clone("pid"));
-  pid->SetTitle("PulseIntegral/%Delta t;A.U.;frequency");
+  pid->SetTitle("PulseIntegral around peak / #Deltat;mV (equiv);frequency");
 
-  //double V0=0;
-  //double Vmax=4;
-  //int Vbins=500;
-  //double Vwid=(Vmax-V0)/Vbins;
-  //auto hscan = new TH1I("hscan","Threshold Scan;mV;frequency",Vbins,V0,Vmax);
-   
-  
   for (int ievt=0; ievt<tree->GetEntries(); ++ievt){
     tree->GetEntry(ievt);
-    baseline = volts[ch][ipeak-iBLS]*1000*vgain;
-    double height=polarity*(volts[ch][ipeak]*1000*vgain-baseline);
+    baseline = volts[ch][ipeak-iBLS]*vgain;
+    double height=(volts[ch][ipeak]-volts[ch][iBLS])*vgain;
     phd->Fill(height);
     double sum=0;
-    // full pulse integral histogram and threshold scan
-    //    for (int n=0; n<LEN; ++n){
-    //      double V=-(volts[ch][n]*1000-baseline);
-    //      if (n>=istart && n<istop) sum+=(V);      
-    //      if (V<V0 || V>=Vmax) continue;
-    //      int ibin = (int)((V-V0)/Vwid) + 1;
-    //      for (int ib=1; ib<=ibin; ++ib) hscan->AddBinContent(ib);
-    //    }
-
+    // integrate over fixed region around nominal peak
     for (int n=istart; n<istop; ++n) {
-      double V=polarity*(volts[ch][n]*1000*vgain-baseline);
+      double V=(volts[ch][n]-volts[ch][iBLS])*vgain;
       sum+=(V); 
     }
     pid->Fill(sum * iScale);   // new
@@ -181,7 +287,8 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
   tfout->Close();
   
   return;
-  
+
+  /*  
   // DCR analysis
   // loop over N buffers at a time to read a long sample window
   // Use TSpectrum to extract peaks
@@ -259,6 +366,6 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
    double meanDC=sum/count * nrebin * 0.05;
    cout << " Mean dt = " << sum/count * nrebin * 0.05 << " ns" << endl;
    cout << " DCR = " << 1/(meanDC*1e-9) << " Hz" << endl;
-  
+  */
 }
 
