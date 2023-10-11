@@ -88,9 +88,12 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
 
   auto tf=new TFile(file);
   auto tree=(TTree*)tf->Get("waves");
+
+
+  TString chan = TString::Format("ch%d",ch);
   // output file
   TString fnout=file;
-  fnout.ReplaceAll(".root",".pdf");
+  fnout.ReplaceAll(".root","_"+chan+".pdf");
   int pos=fnout.Last('/');
   if ( pos>-1 ) fnout.Remove(0,pos+1);
 
@@ -131,7 +134,7 @@ void pulse_height(TString file="C2--CV-40_54V-partslaser--5k--00000.root",int ch
   int nplot=3;
   int n;
   auto mg = new TMultiGraph();
-  mg->SetTitle("Sample buffer;ns;mV");
+  mg->SetTitle(TString::Format("Sample buffer ch%d;ns;mV",ch));
   for (int i=0; i<nplot; ++i){
     n = tree->Draw(m,"","GOFF",1,i);
     TGraph *g = new TGraph(n,tree->GetV2(),tree->GetV1()); 
